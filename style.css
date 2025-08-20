@@ -1,0 +1,100 @@
+body{
+    margin:0;
+    font-family:monospace;
+    background:#000;
+    color:#0f0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    overflow:hidden;
+}
+#chatContainer{
+    width:95%;
+    max-width:1200px;
+    display:flex;
+    flex-direction:column;
+    height:95%;
+    border:2px solid #0f0;
+    padding:10px;
+    box-sizing:border-box;
+    background:#010101;
+    box-shadow:0 0 30px #0f0;
+}
+#topBar,#messageBar{
+    display:flex;
+    margin-bottom:5px;
+    flex-wrap:wrap;
+}
+#usernameInput,#msgInput,#roomInput{
+    flex:1;
+    background:#000;
+    color:#0f0;
+    border:1px solid #0f0;
+    padding:6px;
+    margin-right:5px;
+    transition:0.3s all;
+}
+#usernameInput:focus,#msgInput:focus,#roomInput:focus{
+    border-color:#0ff;
+    outline:none;
+}
+button{
+    background:#000;
+    color:#0f0;
+    border:1px solid #0f0;
+    padding:6px 12px;
+    cursor:pointer;
+    margin-right:5px;
+    transition:0.3s all;
+}
+button:hover{
+    background:#0f0;
+    color:#000;
+}
+#chatBox{
+    flex:1;
+    overflow-y:auto;
+    border:1px solid #0f0;
+    padding:8px;
+    margin-bottom:5px;
+    background:#010101;
+    box-shadow: inset 0 0 15px #0f0;
+}
+#chatBox div{
+    margin-bottom:3px;
+    opacity:0;
+    animation:fadeIn 0.5s forwards;
+}
+@keyframes fadeIn{
+    to{opacity:1;}
+}
+#userList{
+    height:60px;
+    overflow-x:auto;
+    border:1px solid #0f0;
+    padding:5px;
+    margin-bottom:5px;
+    background:#010101;
+    box-shadow: inset 0 0 5px #0f0;
+}
+#messageBar input{
+    flex:1;
+    background:#000;
+    color:#0f0;
+    border:1px solid #0f0;
+    padding:5px;
+}
+#messageBar button{
+    background:#000;
+    color:#0f0;
+    border:1px solid #0f0;
+    padding:5px 12px;
+    cursor:pointer;
+}
+#roomLinkDisplay{
+    flex-basis:100%;
+    margin-top:5px;
+    font-size:0.85rem;
+    color:#0ff;
+}
