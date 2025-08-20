@@ -1,40 +1,6 @@
 const express=require('express');
 const http=require('http');
-const {Server}=require('socket.io');
-const helmet=require('helmet');
-const sanitizeHtml=require('sanitize-html');
 
-const app=express();
-app.use(helmet());
-const server=http.createServer(app);
-const io=new Server(server);
-
-app.use(express.static(__dirname));
-
-const rooms={};
-const MAX_USERS_PER_ROOM=5;
-const CHAT_HISTORY_LIMIT=500;
-const MESSAGE_RATE_LIMIT=15; 
-const RATE_WINDOW_MS=3000;
-
-const userMessageTimestamps={};
-
-function sanitize(msg){return sanitizeHtml(msg,{allowedTags:[],allowedAttributes:{}});}
-
-io.on('connection',socket=>{
-    let currentRoom=null;
-    let username=null;
-
-    socket.on('joinRoom',data=>{
-        username=data.username?.substring(0,16)||`Anon${Math.floor(Math.random()*100000)}`;
-        let room=data.room||`room-${Math.floor(Math.random()*100000)}`;
-        currentRoom=room;
-
-        if(!rooms[room])rooms[room]={users:[],history:[]};
-
-        if(rooms[room].users.length>=MAX_USERS_PER_ROOM){
-            socket.emit('fullRoom',{room});
-            return;
         }
 
         socket.join(room);
@@ -98,3 +64,4 @@ io.on('connection',socket=>{
 
 const PORT=process.env.PORT||3000;
 server.listen(PORT,()=>console.log(`DarkWebChat server running on port ${PORT}`));
+
