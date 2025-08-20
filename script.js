@@ -1,47 +1,65 @@
-const socket=io();
 let username='';
 let roomId='';
-let messageTimestamps=[];
-const RATE_LIMIT=15;
-const RATE_WINDOW=3000;
-
+let ws;
+const chatBox=document.getElementById('chatBox');
+const userList=document.getElementById('userList');
 const usernameInput=document.getElementById('usernameInput');
 const setUsernameBtn=document.getElementById('setUsernameBtn');
-const roomInput=document.getElementById('roomInput');
-const joinRoomBtn=document.getElementById('joinRoomBtn');
 const hopBtn=document.getElementById('hopBtn');
 const msgInput=document.getElementById('msgInput');
 const sendBtn=document.getElementById('sendBtn');
-const chatBox=document.getElementById('chatBox');
-const userList=document.getElementById('userList');
 const roomLinkDisplay=document.getElementById('roomLinkDisplay');
 
-function randomAnon(){return `Anon${Math.floor(Math.random()*100000)}`;}
-function appendMsg(msg){const div=document.createElement('div');div.textContent=msg;chatBox.appendChild(div);chatBox.scrollTop=chatBox.scrollHeight;}
-function updateRoster(users){userList.textContent=users.join(', ');}
-function canSend(){const now=Date.now();messageTimestamps=messageTimestamps.filter(t=>now-t<RATE_WINDOW);return messageTimestamps.length<RATE_LIMIT;}
-
-function joinRoom(rid){
-    roomId=rid||roomInput.value||`room-${Math.floor(Math.random()*100000)}`;
-    roomInput.value=roomId;
-    roomLinkDisplay.textContent=`Room link: ${window.location.origin}${window.location.pathname}#${roomId}`;
-    if(!username) username=randomAnon();
-    socket.emit('joinRoom',{username,roomId});
+function appendMsg(msg){
+  const div=document.createElement('div');
+  div.textContent=msg;
+  chatBox.appendChild(div);
+  chatBox.scrollTop=chatBox.scrollHeight;
 }
 
-setUsernameBtn.onclick=()=>{if(usernameInput.value){const old=username||randomAnon();username=usernameInput.value.substring(0,16);usernameInput.value='';socket.emit('rename',username);appendMsg(`* Your username is now ${username} *`);}};
-joinRoomBtn.onclick=()=>joinRoom();
-hopBtn.onclick=()=>joinRoom(`room-${Math.floor(Math.random()*100000)}`);
-sendBtn.onclick=()=>{if(!msgInput.value)return;if(!canSend())return;messageTimestamps.push(Date.now());socket.emit('sendMessage',msgInput.value);msgInput.value='';};
+function updateRoster(users){userList.textContent=users.join(', ');}
+
+function randomAnon(){return 'Anon'+Math.floor(Math.random()*100000);}
+
+function generateRoom(){return 'room-'+Math.floor(Math.random()*100000);}
+
+function connectWebSocket(){
+  ws=new WebSocket(`ws://${window.location.hostname}:8080`);
+  ws.onopen=()=>{ws.send(JSON.stringify({type:'join',room:roomId,username}));};
+  ws.onmessage=msg=>{
+    const data=JSON.parse(msg.data);
+    if(data.type==='message') appendMsg(`${data.user}: ${data.text}`);
+    if(data.type==='join') appendMsg(`* ${data.user} joined the room *`);
+    if(data.type==='leave') appendMsg(`* ${data.user} left the room *`);
+    if(data.type==='rename') appendMsg(`* ${data.oldName} is now ${data.newName} *`);
+    if(data.type==='roster') updateRoster(data.users);
+    if(data.type==='full') alert('Room full, try random hop');
+  };
+}
+
+function joinRoom(rid){
+  roomId=rid||generateRoom();
+  if(!username) username=randomAnon();
+  roomLinkDisplay.textContent=`Room link: ${window.location.origin}#${roomId}`;
+  connectWebSocket();
+}
+
+setUsernameBtn.onclick=()=>{
+  if(!usernameInput.value)return;
+  const old=username||randomAnon();
+  username=usernameInput.value.substring(0,16);
+  usernameInput.value='';
+  ws.send(JSON.stringify({type:'rename',newName:username}));
+};
+
+hopBtn.onclick=()=>{if(ws)ws.close();joinRoom(generateRoom());};
+
+sendBtn.onclick=()=>{if(!msgInput.value)return;ws.send(JSON.stringify({type:'message',text:msgInput.value}));msgInput.value='';};
 
 msgInput.addEventListener('keypress',e=>{if(e.key==='Enter')sendBtn.click();});
 usernameInput.addEventListener('keypress',e=>{if(e.key==='Enter')setUsernameBtn.click();});
-roomInput.addEventListener('keypress',e=>{if(e.key==='Enter')joinRoomBtn.click();});
 
-socket.on('newMessage',msg=>appendMsg(`${msg.user}: ${msg.text}`));
-socket.on('systemMessage',msg=>appendMsg(`* ${msg} *`));
-socket.on('updateRoster',users=>updateRoster(users));
-socket.on('chatHistory',history=>history.forEach(m=>appendMsg(`${m.user}: ${m.text}`)));
-socket.on('roomFull',()=>appendMsg('* Room is full, try another *'));
-
-if(window.location.hash) joinRoom(window.location.hash.substring(1));
+window.onload=()=>{
+  const hash=window.location.hash.substring(1);
+  joinRoom(hash);
+};
