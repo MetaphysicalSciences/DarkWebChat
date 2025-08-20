@@ -1,26 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DarkWebChat</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DarkWebChat – Global Anonymous Chat</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="chatContainer">
-  <div id="topBar">
-    <input id="usernameInput" placeholder="Enter username (16 chars max)">
-    <button id="setUsernameBtn">Set Username</button>
-    <button id="joinRoomBtn">Join Room</button>
-    <button id="hopBtn">Random Hop</button>
-    <span id="roomLinkDisplay"></span>
-  </div>
-  <div id="chatBox"></div>
-  <div id="userList"></div>
-  <div id="messageBar">
-    <input id="msgInput" placeholder="Type message here...">
-    <button id="sendBtn">Send</button>
-  </div>
+<div id="wrap">
+  <header id="header">
+    <div id="brand">DarkWebChat</div>
+    <div id="controls">
+      <input id="usernameInput" maxlength="16" placeholder="Pick a username (optional)"/>
+      <button id="setUsernameBtn">Set</button>
+      <input id="roomInput" placeholder="Room ID or leave blank for auto"/>
+      <button id="joinBtn">Join</button>
+      <button id="hopBtn">Random Hop</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="left">
+      <div id="roomInfo">
+        <div id="roomLink" class="muted">room: <span id="roomIdDisplay">—</span></div>
+        <div id="status" class="muted">status: disconnected</div>
+      </div>
+      <div id="userList" class="panel"></div>
+      <div id="roomsPanel" class="panel">
+        <div class="panelTitle">Active rooms</div>
+        <div id="roomsList"></div>
+      </div>
+    </section>
+
+    <section id="chatSection">
+      <div id="chatBox" class="panel"></div>
+      <div id="composer">
+        <input id="msgInput" placeholder="Type message and press send or Enter" maxlength="1200"/>
+        <button id="sendBtn">Send</button>
+      </div>
+    </section>
+  </main>
+
+  <footer id="footer">
+    <div id="notes">Anonymous. No third-party APIs. Up to 5 users per room.</div>
+  </footer>
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="script.js"></script>
