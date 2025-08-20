@@ -3,16 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DarkWebChat – Global Anonymous Chat</title>
+<title>DarkWebChat</title>
 <link rel="stylesheet" href="style.css">
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
 <div id="chatContainer">
   <div id="topBar">
-    <input id="usernameInput" placeholder="Enter username (16 max)"/>
+    <input id="usernameInput" placeholder="Enter username (16 chars max)">
     <button id="setUsernameBtn">Set Username</button>
-    <input id="roomInput" placeholder="Room ID or leave blank"/>
     <button id="joinRoomBtn">Join Room</button>
     <button id="hopBtn">Random Hop</button>
     <span id="roomLinkDisplay"></span>
@@ -20,10 +18,11 @@
   <div id="chatBox"></div>
   <div id="userList"></div>
   <div id="messageBar">
-    <input id="msgInput" placeholder="Type message"/>
+    <input id="msgInput" placeholder="Type message here...">
     <button id="sendBtn">Send</button>
   </div>
 </div>
+<script src="/socket.io/socket.io.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
