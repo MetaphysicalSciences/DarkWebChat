@@ -1,100 +1,136 @@
-const express=require('express');
-const http=require('http');
-const {Server}=require('socket.io');
-const helmet=require('helmet');
-const sanitizeHtml=require('sanitize-html');
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const helmet = require('helmet');
+const sanitizeHtml = require('sanitize-html');
+const { v4: uuidv4 } = require('uuid');
 
-const app=express();
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
 app.use(helmet());
-const server=http.createServer(app);
-const io=new Server(server);
-
 app.use(express.static(__dirname));
 
-const rooms={};
-const MAX_USERS_PER_ROOM=5;
-const CHAT_HISTORY_LIMIT=500;
-const MESSAGE_RATE_LIMIT=15; 
-const RATE_WINDOW_MS=3000;
+const MAX_USERS = 5;
+const MAX_MESSAGES = 500;
+const RATE_LIMIT_COUNT = 15;
+const RATE_LIMIT_WINDOW_MS = 3000;
 
-const userMessageTimestamps={};
+const rooms = {};
+const userRateMap = {};
 
-function sanitize(msg){return sanitizeHtml(msg,{allowedTags:[],allowedAttributes:{}});}
+function makeAnon() {
+  return `Anon${Math.floor(Math.random() * 100000)}`;
+}
 
-io.on('connection',socket=>{
-    let currentRoom=null;
-    let username=null;
+function getRoom(roomId) {
+  if (!rooms[roomId]) {
+    rooms[roomId] = { users: [], messages: [] };
+  }
+  return rooms[roomId];
+}
 
-    socket.on('joinRoom',data=>{
-        username=data.username?.substring(0,16)||`Anon${Math.floor(Math.random()*100000)}`;
-        let room=data.room||`room-${Math.floor(Math.random()*100000)}`;
-        currentRoom=room;
+function cleanUpRoomIfEmpty(roomId) {
+  const r = rooms[roomId];
+  if (!r) return;
+  if (r.users.length === 0) delete rooms[roomId];
+}
 
-        if(!rooms[room])rooms[room]={users:[],history:[]};
+io.on('connection', socket => {
+  let currentRoom = null;
+  let username = null;
 
-        if(rooms[room].users.length>=MAX_USERS_PER_ROOM){
-            socket.emit('fullRoom',{room});
-            return;
-        }
+  socket.on('createOrJoin', data => {
+    const requested = data && data.roomId ? String(data.roomId) : null;
+    let roomId = requested;
+    if (!roomId) roomId = `room-${Math.floor(Math.random() * 1000000)}`;
+    let room = getRoom(roomId);
+    if (room.users.length >= MAX_USERS) {
+      socket.emit('room-full', { roomId });
+      return;
+    }
+    username = (data && data.username) ? String(data.username).substring(0,16) : makeAnon();
+    if (!username) username = makeAnon();
+    currentRoom = roomId;
+    socket.join(roomId);
+    room.users.push({ id: socket.id, name: username });
+    socket.emit('joined', { roomId, users: room.users, messages: room.messages, you: username });
+    socket.to(roomId).emit('system', { text: `${username} joined the room` });
+    io.to(roomId).emit('roster', { users: room.users.map(u => u.name) });
+  });
 
-        socket.join(room);
-        rooms[room].users.push(username);
-        socket.to(room).emit('systemMessage',`${username} joined the room`);
-        socket.emit('systemMessage',`* Joined room ${room} *`);
+  socket.on('sendMessage', data => {
+    if (!currentRoom) return;
+    if (!data || typeof data.text !== 'string') return;
+    const now = Date.now();
+    const key = socket.id;
+    if (!userRateMap[key]) userRateMap[key] = [];
+    userRateMap[key] = userRateMap[key].filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (userRateMap[key].length >= RATE_LIMIT_COUNT) {
+      socket.emit('rate-limited', { when: RATE_LIMIT_WINDOW_MS });
+      return;
+    }
+    userRateMap[key].push(now);
+    const clean = sanitizeHtml(data.text, { allowedTags: [], allowedAttributes: {} }).trim().slice(0,2000);
+    if (!clean) return;
+    const room = getRoom(currentRoom);
+    const msg = { id: uuidv4(), user: username, text: clean, ts: now };
+    room.messages.push(msg);
+    if (room.messages.length > MAX_MESSAGES) room.messages.shift();
+    io.to(currentRoom).emit('message', msg);
+  });
 
-        if(rooms[room].history.length>0)socket.emit('chatHistory',rooms[room].history);
-        io.to(room).emit('updateUsers',rooms[room].users);
-    });
+  socket.on('rename', newName => {
+    if (!currentRoom) return;
+    const old = username;
+    username = newName ? String(newName).substring(0,16) : username;
+    const room = getRoom(currentRoom);
+    for (let u of room.users) if (u.id === socket.id) u.name = username;
+    io.to(currentRoom).emit('system', { text: `${old} is now ${username}` });
+    io.to(currentRoom).emit('roster', { users: room.users.map(u => u.name) });
+  });
 
-    socket.on('sendMessage',text=>{
-        if(!currentRoom||!username)return;
-        const now=Date.now();
-        if(!userMessageTimestamps[socket.id])userMessageTimestamps[socket.id]=[];
-        userMessageTimestamps[socket.id]=userMessageTimestamps[socket.id].filter(t=>now-t<RATE_WINDOW_MS);
-        if(userMessageTimestamps[socket.id].length>=MESSAGE_RATE_LIMIT)return;
-        userMessageTimestamps[socket.id].push(now);
+  socket.on('hop', () => {
+    if (currentRoom) {
+      const room = getRoom(currentRoom);
+      room.users = room.users.filter(u => u.id !== socket.id);
+      socket.leave(currentRoom);
+      socket.to(currentRoom).emit('system', { text: `${username} left the room` });
+      io.to(currentRoom).emit('roster', { users: room.users.map(u => u.name) });
+      cleanUpRoomIfEmpty(currentRoom);
+      currentRoom = null;
+    }
+    const newRoomId = `room-${Math.floor(Math.random() * 1000000)}`;
+    const room = getRoom(newRoomId);
+    if (room.users.length >= MAX_USERS) {
+      socket.emit('room-full', { roomId: newRoomId });
+      return;
+    }
+    room.users.push({ id: socket.id, name: username });
+    currentRoom = newRoomId;
+    socket.join(newRoomId);
+    socket.emit('joined', { roomId: newRoomId, users: room.users, messages: room.messages, you: username });
+    socket.to(newRoomId).emit('system', { text: `${username} joined the room` });
+    io.to(newRoomId).emit('roster', { users: room.users.map(u => u.name) });
+  });
 
-        const clean=sanitize(text);
-        const msgObj={user:username,text:clean};
-        if(!rooms[currentRoom])rooms[currentRoom]={users:[],history:[]};
-        rooms[currentRoom].history.push(msgObj);
-        if(rooms[currentRoom].history.length>CHAT_HISTORY_LIMIT)rooms[currentRoom].history.shift();
-        io.to(currentRoom).emit('newMessage',msgObj);
-    });
+  socket.on('get-rooms', () => {
+    const brief = Object.keys(rooms).map(rid => ({ id: rid, count: rooms[rid].users.length }));
+    socket.emit('rooms-list', brief);
+  });
 
-    socket.on('rename',newName=>{
-        if(!currentRoom||!username)return;
-        const old=username;
-        username=newName.substring(0,16);
-        if(rooms[currentRoom]){
-            const idx=rooms[currentRoom].users.indexOf(old);
-            if(idx>=0)rooms[currentRoom].users[idx]=username;
-            io.to(currentRoom).emit('updateUsers',rooms[currentRoom].users);
-            io.to(currentRoom).emit('systemMessage',`${old} is now ${username}`);
-        }
-    });
-
-    socket.on('hopRoom',()=>{
-        if(!currentRoom||!username)return;
-        if(rooms[currentRoom]){
-            rooms[currentRoom].users=rooms[currentRoom].users.filter(u=>u!==username);
-            socket.to(currentRoom).emit('updateUsers',rooms[currentRoom].users);
-            socket.to(currentRoom).emit('systemMessage',`${username} left the room`);
-            if(rooms[currentRoom].users.length===0)delete rooms[currentRoom];
-        }
-        socket.leave(currentRoom);
-        currentRoom=null;
-    });
-
-    socket.on('disconnect',()=>{
-        if(currentRoom&&rooms[currentRoom]){
-            rooms[currentRoom].users=rooms[currentRoom].users.filter(u=>u!==username);
-            socket.to(currentRoom).emit('updateUsers',rooms[currentRoom].users);
-            socket.to(currentRoom).emit('systemMessage',`${username} left the room`);
-            if(rooms[currentRoom].users.length===0)delete rooms[currentRoom];
-        }
-    });
+  socket.on('disconnect', () => {
+    if (!currentRoom) return;
+    const room = getRoom(currentRoom);
+    room.users = room.users.filter(u => u.id !== socket.id);
+    socket.to(currentRoom).emit('system', { text: `${username} disconnected` });
+    io.to(currentRoom).emit('roster', { users: room.users.map(u => u.name) });
+    cleanUpRoomIfEmpty(currentRoom);
+  });
 });
 
-const PORT=process.env.PORT||3000;
-server.listen(PORT,()=>console.log(`DarkWebChat server running on port ${PORT}`));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`DarkWebChat server running on port ${PORT}`);
+});
